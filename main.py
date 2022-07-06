@@ -41,6 +41,20 @@ if __name__=='__main__':
                         help='Model checkpoint file path')
     parser.add_argument('--result_path', default='/mnt/md0/kyohoon/results/latent', type=str,
                         help='Results file path')
+    # Preprocessing setting
+    parser.add_argument('--tokenizer', default='alpha_map', choices=[
+        'spm_unigram', 'spm_bpe', 'spm_word', 'spm_char', 'alpha_map'
+            ], help='Tokenizer select; Default is spm')
+    parser.add_argument('--character_coverage', default=1.0, type=float,
+                        help='Source language chracter coverage ratio; Default is 1.0')
+    parser.add_argument('--pad_id', default=0, type=int,
+                        help='Padding token index; Default is 0')
+    parser.add_argument('--unk_id', default=3, type=int,
+                        help='Unknown token index; Default is 3')
+    parser.add_argument('--bos_id', default=1, type=int,
+                        help='Padding token index; Default is 1')
+    parser.add_argument('--eos_id', default=2, type=int,
+                        help='Padding token index; Default is 2')
     # Model setting
     # 0) Model selection
     parser.add_argument('--model_type', default='custom_transformer', type=str, choices=[
