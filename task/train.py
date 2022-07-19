@@ -8,6 +8,7 @@ from time import time
 # Import PyTorch
 import torch
 import torch.nn as nn
+from torchmetrics import F1Score
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
@@ -45,14 +46,20 @@ def training(args):
     write_log(logger, "Load data...")
     gc.disable()
 
-    save_name = f'processed.pkl'
+    # Path setting
+    save_path = os.path.join(args.preprocess_path, args.tokenizer)
+    save_name = f'vocab_{args.vocab_size}_processed.pkl'
 
-    with open(os.path.join(args.preprocess_path, save_name), 'rb') as f:
+    with open(os.path.join(save_path, save_name), 'rb') as f:
         data_ = pickle.load(f)
-        train_src_input_ids = data_['train_src_input_ids']
-        train_src_attention_mask = data_['train_src_attention_mask']
-        valid_src_input_ids = data_['valid_src_input_ids']
-        valid_src_attention_mask = data_['valid_src_input_ids']
+        train_epitope_input_ids = data_['train_epitope_input_ids']
+        train_epitope_attention_mask = data_['train_epitope_attention_mask']
+        train_antigen_input_ids = data_['train_antigen_input_ids']
+        train_antigen_attention_mask = data_['train_antigen_attention_mask']
+        valid_epitope_input_ids = data_['valid_epitope_input_ids']
+        valid_epitope_attention_mask = data_['valid_epitope_attention_mask']
+        valid_antigen_input_ids = data_['valid_antigen_input_ids']
+        valid_antigen_attention_mask = data_['valid_antigen_attention_mask']
         train_trg_list = data_['train_label']
         valid_trg_list = data_['valid_label']
         del data_
@@ -62,9 +69,9 @@ def training(args):
 
     # 2) Dataloader setting
     dataset_dict = {
-        'train': Seq2LabelDataset(src_list=train_src_input_ids, src_att_list=train_src_attention_mask,
+        'train': Seq2LabelDataset(src_list=train_epitope_input_ids, src_att_list=train_epitope_attention_mask,
                                   trg_list=train_trg_list, min_len=args.min_len, src_max_len=args.src_max_len),
-        'valid': Seq2LabelDataset(src_list=valid_src_input_ids, src_att_list=valid_src_attention_mask,
+        'valid': Seq2LabelDataset(src_list=valid_epitope_input_ids, src_att_list=valid_epitope_attention_mask,
                                   trg_list=valid_trg_list, min_len=args.min_len, src_max_len=args.src_max_len),
     }
     dataloader_dict = {
@@ -84,7 +91,7 @@ def training(args):
     # 1) Model initiating
     write_log(logger, 'Instantiating model...')
     if args.model_type == 'custom_transformer':
-        model = Transformer(d_model=args.d_model, d_embedding=args.d_embedding, 
+        model = Transformer(vocab_size=args.vocab_size, d_model=args.d_model, d_embedding=args.d_embedding, 
                             n_head=args.n_head, dim_feedforward=args.dim_feedforward,
                             num_encoder_layer=args.num_encoder_layer, src_max_len=args.src_max_len, 
                             dropout=args.dropout, embedding_dropout=args.embedding_dropout)
@@ -100,6 +107,7 @@ def training(args):
     scheduler = shceduler_select(optimizer, dataloader_dict, args)
     scaler = GradScaler()
     criterion = nn.CrossEntropyLoss()
+    criterion_f1 = F1Score(num_classes=2, average='macro').to(device)
 
     # 3) Model resume
     start_epoch = 0
@@ -117,7 +125,7 @@ def training(args):
     #=========Model Train Start=========#
     #===================================#
 
-    best_val_acc = 0
+    best_val_f1 = 0
 
     write_log(logger, 'Traing start!')
 
@@ -130,6 +138,7 @@ def training(args):
                 write_log(logger, 'Validation start...')
                 val_loss = 0
                 val_acc = 0
+                val_f1 = 0
                 model.eval()
             for i, batch_iter in enumerate(tqdm(dataloader_dict[phase], bar_format='{l_bar}{bar:30}{r_bar}{bar:-2b}')):
 
@@ -169,9 +178,10 @@ def training(args):
                     # Print loss value only training
                     if i == 0 or freq == args.print_freq or i==len(dataloader_dict['train']):
                         acc = (predicted.max(dim=1)[1] == trg_label).sum() / len(trg_label)
-                        iter_log = "[Epoch:%03d][%03d/%03d] train_loss:%03.3f | train_acc:%03.2f%% | learning_rate:%1.6f | spend_time:%02.2fmin" % \
+                        macro_f1_score = criterion_f1(predicted.max(dim=1)[1], trg_label)
+                        iter_log = "[Epoch:%03d][%03d/%03d] train_loss:%03.3f | train_acc:%03.2f%% | train_f1:%03.2f%% | learning_rate:%1.6f | spend_time:%02.2fmin" % \
                             (epoch, i, len(dataloader_dict['train']), 
-                            total_loss.item(), acc*100, optimizer.param_groups[0]['lr'], 
+                            total_loss.item(), acc*100, macro_f1_score.item(), optimizer.param_groups[0]['lr'], 
                             (time() - start_time_e) / 60)
                         write_log(logger, iter_log)
                         freq = 0
@@ -186,6 +196,7 @@ def training(args):
                         total_loss = loss
                     val_loss += total_loss.item()
                     val_acc += (predicted.max(dim=1)[1] == trg_label).sum() / len(trg_label)
+                    val_f1 += criterion_f1(predicted.max(dim=1)[1], trg_label).item()
 
             if phase == 'valid':
 
@@ -196,14 +207,16 @@ def training(args):
 
                 val_loss /= len(dataloader_dict[phase])
                 val_acc /= len(dataloader_dict[phase])
+                val_f1 /= len(dataloader_dict[phase])
                 write_log(logger, 'Validation Loss: %3.3f' % val_loss)
                 write_log(logger, 'Validation Accuracy: %3.2f%%' % (val_acc * 100))
-                save_path = os.path.join(args.model_save_path, args.task, args.data_name, args.tokenizer)
+                write_log(logger, 'Validation MacroF1: %3.2f%%' % (val_f1))
+                save_path = os.path.join(args.model_save_path, args.tokenizer)
                 if not os.path.exists(save_path):
                     os.mkdir(save_path)
                 save_file_name = os.path.join(save_path, 
-                                              f'checkpoint_src_{args.src_vocab_size}_trg_{args.trg_vocab_size}_v_{args.variational_mode}_p_{args.parallel}.pth.tar')
-                if val_acc > best_val_acc:
+                                              f'checkpoint_vocab_{args.vocab_size}.pth.tar')
+                if val_f1 > best_val_f1:
                     write_log(logger, 'Checkpoint saving...')
                     torch.save({
                         'epoch': epoch,
@@ -212,12 +225,12 @@ def training(args):
                         'scheduler': scheduler.state_dict(),
                         'scaler': scaler.state_dict()
                     }, save_file_name)
-                    best_val_acc = val_acc
+                    best_val_f1 = val_f1
                     best_epoch = epoch
                 else:
-                    else_log = f'Still {best_epoch} epoch accuracy({round(best_val_acc.item()*100, 2)})% is better...'
+                    else_log = f'Still {best_epoch} epoch accuracy({round(best_val_f1*100, 2)})% is better...'
                     write_log(logger, else_log)
 
     # 3) Print results
     print(f'Best Epoch: {best_epoch}')
-    print(f'Best Accuracy: {round(best_val_acc.item(), 2)}')
+    print(f'Best Accuracy: {round(best_val_f1, 2)}')

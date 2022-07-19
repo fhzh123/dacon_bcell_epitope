@@ -11,7 +11,7 @@ from .embedding import TransformerEmbedding
 from ..latent_module.latent import Latent_module 
 
 class Transformer(nn.Module):
-    def __init__(self, pad_idx=0, d_model=512, d_embedding=256, n_head=8, dim_feedforward=2048, 
+    def __init__(self, vocab_size=27, pad_idx=0, d_model=512, d_embedding=256, n_head=8, dim_feedforward=2048, 
             d_latent=256, num_encoder_layer=10, src_max_len=100,
             dropout=0.1, embedding_dropout=0.1):
 
@@ -25,7 +25,7 @@ class Transformer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         # Source embedding part
-        self.src_embedding = TransformerEmbedding(27, d_model, d_embedding, 
+        self.src_embedding = TransformerEmbedding(vocab_size, d_model, d_embedding, 
             pad_idx=self.pad_idx, max_len=self.src_max_len, dropout=embedding_dropout)
 
         # Transformer Encoder part

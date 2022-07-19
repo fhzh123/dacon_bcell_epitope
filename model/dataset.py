@@ -11,7 +11,7 @@ class Seq2LabelDataset(Dataset):
                 src_tensor = torch.zeros(src_max_len, dtype=torch.long)
                 src_tensor[:len(src)] = torch.tensor(src, dtype=torch.long)
                 src_att_tensor = torch.zeros(src_max_len, dtype=torch.long)
-                src_att_tensor[:len(src)] = torch.tensor(src_att, dtype=torch.long)
+                src_att_tensor[:len(src_att)] = torch.tensor(src_att, dtype=torch.long)
                 # Target tensor
                 trg_tensor = torch.tensor(trg, dtype=torch.long)
                 # Tensor list
@@ -29,14 +29,19 @@ class Seq2LabelTestDataset(Dataset):
     def __init__(self, src_list, src_att_list,
                  min_len: int = 4, src_max_len: int = 300):
         self.tensor_list = []
-        for src, src_att, trg in zip(src_list, src_att_list):
+        self.except_list = []
+        for i, (src, src_att) in enumerate(zip(src_list, src_att_list)):
             if min_len <= len(src) <= src_max_len:
                 # Source tensor
                 src_tensor = torch.zeros(src_max_len, dtype=torch.long)
                 src_tensor[:len(src)] = torch.tensor(src, dtype=torch.long)
-                src_att_tensor = torch.tensor(src_att, dtype=torch.long)
+                src_att_tensor = torch.zeros(src_max_len, dtype=torch.long)
+                src_att_tensor[:len(src_att)] = torch.tensor(src_att, dtype=torch.long)
                 # Tensor list
-                self.tensor_list.append((src_tensor, src_att_tensor, trg_tensor))
+                self.tensor_list.append((src_tensor, src_att_tensor))
+            else:
+                print(i)
+                self.except_list.append(i)
 
         self.num_data = len(self.tensor_list)
 

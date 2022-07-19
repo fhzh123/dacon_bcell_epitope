@@ -2,8 +2,9 @@
 import time
 import argparse
 # Import custom modules
-from preprocessing import preprocessing
-from train import training
+from task.preprocessing import preprocessing
+from task.train import training
+from task.test import testing
 # Utils
 from utils import str2bool, path_check, set_random_seed
 
@@ -12,6 +13,9 @@ def main(args):
     # Time setting
     total_start_time = time.time()
 
+    # Path checking
+    path_check(args)
+
     if args.preprocessing:
         preprocessing(args)
 
@@ -19,8 +23,7 @@ def main(args):
         training(args)
 
     if args.testing:
-        if args.task in ['translation', 'style_transfer', 'reconstruction', 'summarization']:
-            seq2seq_testing(args)
+        testing(args)
 
     # Time calculate
     print(f'Done! ; {round((time.time()-total_start_time)/60, 3)}min spend')
@@ -39,12 +42,14 @@ if __name__=='__main__':
                         help='Original data path')
     parser.add_argument('--model_save_path', default='/mnt/md0/kyohoon/model_checkpoint/latent', type=str,
                         help='Model checkpoint file path')
-    parser.add_argument('--result_path', default='/mnt/md0/kyohoon/results/latent', type=str,
+    parser.add_argument('--result_path', default='./', type=str,
                         help='Results file path')
     # Preprocessing setting
     parser.add_argument('--tokenizer', default='alpha_map', choices=[
         'spm_unigram', 'spm_bpe', 'spm_word', 'spm_char', 'alpha_map'
             ], help='Tokenizer select; Default is spm')
+    parser.add_argument('--vocab_size', default=27, type=int,
+                        help='Vocabulary size; Default is 27')
     parser.add_argument('--character_coverage', default=1.0, type=float,
                         help='Source language chracter coverage ratio; Default is 1.0')
     parser.add_argument('--pad_id', default=0, type=int,
@@ -115,6 +120,8 @@ if __name__=='__main__':
                         help='Num CPU Workers; Default is 8')
     parser.add_argument('--batch_size', default=16, type=int,    
                         help='Batch size; Default is 16')
+    parser.add_argument('--test_batch_size', default=32, type=int,
+                        help='')
     parser.add_argument('--lr', default=5e-5, type=float,
                         help='Maximum learning rate of warmup scheduler; Default is 5e-5')
     parser.add_argument('--w_decay', default=1e-5, type=float,
